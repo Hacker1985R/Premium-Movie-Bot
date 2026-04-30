@@ -245,6 +245,80 @@ def req(message):
     bot.reply_to(message, "✅ Admin ko request bhej di gayi hai!")
     bot.send_message(ADMIN_ID, f"📩 *New Request:* {r}\nFrom: {message.from_user.first_name}")
 
+# --- Inline Mode (YouTube-jaisa live suggestions) ---
+# User kisi bhi chat me likhe: @aapka_bot doom  -> live suggestions aayengi
+@bot.inline_handler(func=lambda q: True)
+def inline_search(inline_query):
+    try:
+        q = inline_query.query.strip().lower()
+        results = []
+        idx = 0
+
+        # Sabhi categories me se matching items dhundo
+        for cat, items in db.items():
+            for key, data in items.items():
+                if q == "" or q in key or key in q:
+                    display = data.get('display_name') or key.upper()
+                    raw_link = data.get('link', '').replace('\\n', '\n')
+                    urls = re.findall(r'https?://\S+', raw_link)
+                    photo = data.get('photo', '')
+
+                    # Buttons banao
+                    markup = types.InlineKeyboardMarkup()
+                    if len(urls) == 1:
+                        markup.add(types.InlineKeyboardButton(
+                            "🚀 Download / Watch", url=urls[0]))
+                    elif len(urls) > 1:
+                        defaults = ["480p", "720p", "1080p", "4K", "HD"]
+                        for i, u in enumerate(urls):
+                            label = defaults[i] if i < len(defaults) else f"Link {i+1}"
+                            markup.add(types.InlineKeyboardButton(
+                                f"📥 {label}", url=u))
+
+                    caption = f"🌟 *{display}*\n\n📂 _{cat.title()}_"
+
+                    # Agar photo file_id hai (Telegram-uploaded), to photo result
+                    # Agar URL hai aur image jaisa lagta hai, photo result
+                    # Warna article result
+                    if photo and photo.startswith('http'):
+                        results.append(types.InlineQueryResultPhoto(
+                            id=str(idx),
+                            photo_url=photo,
+                            thumbnail_url=photo,
+                            title=display,
+                            description=cat.title(),
+                            caption=caption,
+                            parse_mode="Markdown",
+                            reply_markup=markup
+                        ))
+                    else:
+                        results.append(types.InlineQueryResultArticle(
+                            id=str(idx),
+                            title=display,
+                            description=f"{cat.title()} • Tap to share",
+                            input_message_content=types.InputTextMessageContent(
+                                caption, parse_mode="Markdown"),
+                            reply_markup=markup
+                        ))
+                    idx += 1
+                    if idx >= 30:  # Telegram limit ~50
+                        break
+            if idx >= 30:
+                break
+
+        if not results:
+            results.append(types.InlineQueryResultArticle(
+                id="0",
+                title="❌ Kuch nahi mila",
+                description=f"'{inline_query.query}' database me nahi hai",
+                input_message_content=types.InputTextMessageContent(
+                    f"📩 Request: /request {inline_query.query}")
+            ))
+
+        bot.answer_inline_query(inline_query.id, results, cache_time=1)
+    except Exception as e:
+        print(f"Inline error: {e}")
+
 # Callback for buttons
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
