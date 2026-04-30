@@ -59,29 +59,41 @@ def search(message):
     cmd = message.text.split()[0][1:].lower()
     query = message.text.replace(f'/{cmd} ', '').strip().lower()
 
+    all_names = list(db[cmd].keys())
+    found_key = None
+
     if query in db[cmd]:
-        data = db[cmd][query]
+        found_key = query
+    else:
+        # Partial match: agar query kisi name ka hissa hai
+        partial = [n for n in all_names if query in n or n in query]
+        if len(partial) == 1:
+            found_key = partial[0]
+
+    if found_key:
+        data = db[cmd][found_key]
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🚀 Download / Watch Online", url=data['link']))
-        
+
         bot.send_photo(
-            message.chat.id, 
-            data['photo'], 
-            caption=f"🌟 *{query.upper()}*\n\n✅ Content ready! Niche button par click karein.",
+            message.chat.id,
+            data['photo'],
+            caption=f"🌟 *{found_key.upper()}*\n\n✅ Content ready! Niche button par click karein.",
             parse_mode="Markdown",
             reply_markup=markup
         )
     else:
-        # Suggestions Logic
-        all_names = list(db[cmd].keys())
-        matches = difflib.get_close_matches(query, all_names, n=3, cutoff=0.3)
-        
+        # Suggestions Logic — partial + fuzzy
+        partial = [n for n in all_names if query in n or n in query]
+        fuzzy = difflib.get_close_matches(query, all_names, n=3, cutoff=0.3)
+        matches = list(dict.fromkeys(partial + fuzzy))[:5]
+
         msg = f"🔍 *'{query}'* nahi mili."
         if matches:
             msg += "\n\n💡 *Shayad aap ye dhundh rahe hain:*\n"
             for m in matches:
                 msg += f"• `/{cmd} {m}`\n"
-        
+
         msg += f"\n📩 Request karne ke liye: `/request {query}`"
         bot.reply_to(message, msg, parse_mode="Markdown")
 
