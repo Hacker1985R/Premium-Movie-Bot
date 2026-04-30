@@ -130,7 +130,10 @@ def callback(call):
         "help_series": "📺 Series ke liye likhein: `/webseries Mirzapur`",
         "help_req": "📩 Request ke liye: `/request MovieName`"
     }
-    bot.answer_callback_query(call.id, help_msgs[call.data], show_alert=True)
+    try:
+        bot.answer_callback_query(call.id, help_msgs.get(call.data, "?"), show_alert=True)
+    except Exception as e:
+        print(f"Callback error: {e}")
 
 print("Premium Bot is running...")
-bot.polling()
+bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
