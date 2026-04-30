@@ -5,10 +5,16 @@ import os
 import re
 import difflib # Matches dhundhne ke liye
 
-# --- DETAILS ---
-API_TOKEN = "8719355883:AAFXKXO4lntJ3RhtzH9-mQJjD9j9_KvWr1w"
-ADMIN_ID = 5853568437 # Apni ID dalo
-# ---------------
+# --- DETAILS (Secrets se load — code me visible nahi) ---
+API_TOKEN = os.environ.get("BOT_TOKEN", "")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
+
+if not API_TOKEN or not ADMIN_ID:
+    raise RuntimeError(
+        "❌ BOT_TOKEN aur ADMIN_ID Secrets me set karein. "
+        "Replit ke Secrets tab me jaake add karein."
+    )
+# -------------------------------------------------------
 
 bot = telebot.TeleBot(API_TOKEN)
 DB_FILE = 'database.json'
