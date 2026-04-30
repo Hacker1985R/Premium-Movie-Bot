@@ -3,7 +3,11 @@ from telebot import types
 import json
 import os
 import re
+import threading
 import difflib # Matches dhundhne ke liye
+
+# --- Auto-Delete Settings ---
+AUTO_DELETE_SECONDS = 300  # 5 minutes
 
 # --- DETAILS (Secrets se load — code me visible nahi) ---
 API_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -28,6 +32,17 @@ def save_db(data):
     with open(DB_FILE, 'w') as f: json.dump(data, f, indent=4)
 
 db = load_db()
+
+# --- Auto-delete helper ---
+def schedule_delete(chat_id, message_id, delay=AUTO_DELETE_SECONDS):
+    def _del():
+        try:
+            bot.delete_message(chat_id, message_id)
+        except Exception as e:
+            print(f"Auto-delete failed: {e}")
+    t = threading.Timer(delay, _del)
+    t.daemon = True
+    t.start()
 
 # --- Welcome Interface ---
 @bot.message_handler(commands=['start'])
@@ -120,27 +135,34 @@ def search(message):
         else:
             caption += raw_link
 
+        # Auto-delete warning
+        mins = AUTO_DELETE_SECONDS // 60
+        caption += f"\n\n⏳ _Ye message {mins} minute me auto-delete ho jayega. Link save kar lein!_"
+
         rm = markup if url_matches else None
-        sent = False
+        sent_msg = None
         if photo:
             try:
-                bot.send_photo(
+                sent_msg = bot.send_photo(
                     message.chat.id,
                     photo,
                     caption=caption,
                     parse_mode="Markdown",
                     reply_markup=rm
                 )
-                sent = True
             except Exception as e:
                 print(f"send_photo failed: {e}")
-        if not sent:
-            bot.send_message(
+        if sent_msg is None:
+            sent_msg = bot.send_message(
                 message.chat.id,
                 caption,
                 parse_mode="Markdown",
                 reply_markup=rm
             )
+
+        # 5 minute baad delete
+        if sent_msg:
+            schedule_delete(sent_msg.chat.id, sent_msg.message_id)
     else:
         # Suggestions Logic — partial + fuzzy
         partial = [n for n in all_names if query in n or n in query]
