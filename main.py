@@ -74,20 +74,39 @@ def search(message):
     if found_key:
         data = db[cmd][found_key]
         raw_link = data['link'].replace('\\n', '\n')
-        urls = re.findall(r'https?://\S+', raw_link)
+
+        # Har URL aur uske aas-paas ka quality label nikaalo
+        url_pattern = re.compile(r'(https?://\S+)')
+        url_matches = list(url_pattern.finditer(raw_link))
+
+        def detect_label(text_before, idx, total):
+            # Common quality keywords
+            qualities = ["2160p", "4k", "1440p", "1080p", "720p", "480p", "360p",
+                         "hdrip", "webrip", "bluray", "hdcam", "hd"]
+            tb = text_before.lower()
+            for q in qualities:
+                if q in tb:
+                    return q.upper()
+            # Fallback default labels
+            defaults = ["480p", "720p", "1080p", "4K", "HD"]
+            return defaults[idx] if idx < len(defaults) else f"Link {idx+1}"
 
         markup = types.InlineKeyboardMarkup()
         caption = f"🌟 *{found_key.upper()}*\n\n"
 
-        if len(urls) == 1:
-            markup.add(types.InlineKeyboardButton("🚀 Download / Watch Online", url=urls[0]))
+        if len(url_matches) == 1:
+            markup.add(types.InlineKeyboardButton(
+                "🚀 Download / Watch Online", url=url_matches[0].group(1)))
             caption += "✅ Content ready! Niche button par click karein."
-        elif len(urls) > 1:
-            # Multiple quality links — har ek ke liye alag button
-            labels = ["480p", "720p", "1080p", "4K", "HD"]
-            for i, u in enumerate(urls):
-                label = labels[i] if i < len(labels) else f"Link {i+1}"
-                markup.add(types.InlineKeyboardButton(f"📥 {label}", url=u))
+        elif len(url_matches) > 1:
+            prev_end = 0
+            for i, m in enumerate(url_matches):
+                # Text just before this URL (since previous URL ended)
+                text_before = raw_link[prev_end:m.start()]
+                label = detect_label(text_before, i, len(url_matches))
+                markup.add(types.InlineKeyboardButton(
+                    f"📥 {label}", url=m.group(1)))
+                prev_end = m.end()
             caption += "✅ Content ready! Quality select karein:"
         else:
             caption += raw_link
@@ -97,7 +116,7 @@ def search(message):
             data['photo'],
             caption=caption,
             parse_mode="Markdown",
-            reply_markup=markup if urls else None
+            reply_markup=markup if url_matches else None
         )
     else:
         # Suggestions Logic — partial + fuzzy
