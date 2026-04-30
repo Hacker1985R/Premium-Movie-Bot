@@ -2,6 +2,7 @@ import telebot
 from telebot import types
 import json
 import os
+import re
 import difflib # Matches dhundhne ke liye
 
 # --- DETAILS ---
@@ -72,15 +73,31 @@ def search(message):
 
     if found_key:
         data = db[cmd][found_key]
+        raw_link = data['link'].replace('\\n', '\n')
+        urls = re.findall(r'https?://\S+', raw_link)
+
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🚀 Download / Watch Online", url=data['link']))
+        caption = f"🌟 *{found_key.upper()}*\n\n"
+
+        if len(urls) == 1:
+            markup.add(types.InlineKeyboardButton("🚀 Download / Watch Online", url=urls[0]))
+            caption += "✅ Content ready! Niche button par click karein."
+        elif len(urls) > 1:
+            # Multiple quality links — har ek ke liye alag button
+            labels = ["480p", "720p", "1080p", "4K", "HD"]
+            for i, u in enumerate(urls):
+                label = labels[i] if i < len(labels) else f"Link {i+1}"
+                markup.add(types.InlineKeyboardButton(f"📥 {label}", url=u))
+            caption += "✅ Content ready! Quality select karein:"
+        else:
+            caption += raw_link
 
         bot.send_photo(
             message.chat.id,
             data['photo'],
-            caption=f"🌟 *{found_key.upper()}*\n\n✅ Content ready! Niche button par click karein.",
+            caption=caption,
             parse_mode="Markdown",
-            reply_markup=markup
+            reply_markup=markup if urls else None
         )
     else:
         # Suggestions Logic — partial + fuzzy
