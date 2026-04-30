@@ -33,6 +33,19 @@ def save_db(data):
 
 db = load_db()
 
+# --- Requests storage ---
+REQ_FILE = 'requests.json'
+
+def load_reqs():
+    if os.path.exists(REQ_FILE):
+        with open(REQ_FILE, 'r') as f: return json.load(f)
+    return []
+
+def save_reqs(data):
+    with open(REQ_FILE, 'w') as f: json.dump(data, f, indent=4)
+
+requests_db = load_reqs()
+
 # --- Auto-delete helper ---
 def schedule_delete(chat_id, message_id, delay=AUTO_DELETE_SECONDS):
     def _del():
@@ -70,7 +83,9 @@ def admin_panel(message):
             "🛠 *ADMIN CONTROL PANEL*\n\n"
             "➕ *Add (text only):*\n`/add movie | name | link`\n\n"
             "🖼 *Add with poster:*\nPhoto bhejein, uske *caption* me likhein:\n`/add movie | name | link`\n\n"
-            "🗑 *Delete:* `/del movie | name`"
+            "🗑 *Delete:* `/del movie | name`\n\n"
+            "📩 *Requests dekho:* `/requests`\n"
+            "🧹 *Clear done/rejected:* `/clearreq`"
         )
         bot.reply_to(message, text, parse_mode="Markdown")
     else:
@@ -269,9 +284,96 @@ def delete_content(message):
 # --- Request ---
 @bot.message_handler(commands=['request'])
 def req(message):
-    r = message.text.replace('/request ', '')
-    bot.reply_to(message, "✅ Admin ko request bhej di gayi hai!")
-    bot.send_message(ADMIN_ID, f"📩 *New Request:* {r}\nFrom: {message.from_user.first_name}")
+    import time
+    r = message.text.replace('/request', '', 1).strip()
+    if not r:
+        bot.reply_to(message, "❌ Likhein: `/request Movie Name`", parse_mode="Markdown")
+        return
+
+    user = message.from_user
+    entry = {
+        "id": int(time.time() * 1000),
+        "movie": r,
+        "user_id": user.id,
+        "user_name": user.first_name or "",
+        "username": f"@{user.username}" if user.username else "",
+        "time": time.strftime("%d %b %Y, %I:%M %p"),
+        "status": "pending"
+    }
+    requests_db.append(entry)
+    save_reqs(requests_db)
+
+    bot.reply_to(message, "✅ Admin ko request bhej di gayi hai!\nJaise hi available hogi, aapko bata diya jayega.")
+
+    # Admin ko notification + quick action button
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ Mark Added", callback_data=f"req_done_{entry['id']}"),
+        types.InlineKeyboardButton("❌ Reject", callback_data=f"req_rej_{entry['id']}")
+    )
+    uname = entry['username'] or entry['user_name']
+    bot.send_message(
+        ADMIN_ID,
+        f"📩 *New Request*\n\n"
+        f"🎬 *Movie:* {r}\n"
+        f"👤 *From:* {uname} (`{user.id}`)\n"
+        f"🕒 {entry['time']}",
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
+
+# --- Admin: View all requests ---
+@bot.message_handler(commands=['requests'])
+def list_requests(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    pending = [r for r in requests_db if r['status'] == 'pending']
+    done = [r for r in requests_db if r['status'] == 'done']
+    rejected = [r for r in requests_db if r['status'] == 'rejected']
+
+    if not requests_db:
+        bot.reply_to(message, "📭 Koi request nahi hai abhi tak.")
+        return
+
+    text = f"📊 *Requests Summary*\n\n"
+    text += f"⏳ Pending: {len(pending)}\n"
+    text += f"✅ Done: {len(done)}\n"
+    text += f"❌ Rejected: {len(rejected)}\n\n"
+
+    if pending:
+        text += "*━━━ ⏳ PENDING ━━━*\n"
+        for r in pending[-15:]:  # Last 15
+            uname = r['username'] or r['user_name']
+            text += f"\n🎬 *{r['movie']}*\n👤 {uname} • 🕒 {r['time']}\n"
+
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+    # Pending walo ke liye quick action buttons (last 5)
+    for r in pending[-5:]:
+        uname = r['username'] or r['user_name']
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("✅ Mark Added", callback_data=f"req_done_{r['id']}"),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"req_rej_{r['id']}")
+        )
+        bot.send_message(
+            ADMIN_ID,
+            f"🎬 *{r['movie']}*\n👤 {uname} (`{r['user_id']}`)\n🕒 {r['time']}",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+
+# --- Admin: Clear old/done requests ---
+@bot.message_handler(commands=['clearreq'])
+def clear_requests(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    global requests_db
+    before = len(requests_db)
+    requests_db = [r for r in requests_db if r['status'] == 'pending']
+    save_reqs(requests_db)
+    bot.reply_to(message, f"🗑️ {before - len(requests_db)} purani requests delete ho gayi.")
 
 # --- Inline Mode (YouTube-jaisa live suggestions) ---
 # User kisi bhi chat me likhe: @aapka_bot doom  -> live suggestions aayengi
@@ -350,14 +452,80 @@ def inline_search(inline_query):
 # Callback for buttons
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
-    help_msgs = {
-        "help_movie": "🎬 Movie ke liye likhein: `/movie Jawan`",
-        "help_anime": "⛩️ Anime ke liye likhein: `/anime Naruto`",
-        "help_series": "📺 Series ke liye likhein: `/webseries Mirzapur`",
-        "help_req": "📩 Request ke liye: `/request MovieName`"
-    }
     try:
-        bot.answer_callback_query(call.id, help_msgs.get(call.data, "?"), show_alert=True)
+        # Help buttons (welcome screen ke)
+        help_msgs = {
+            "help_movie": "🎬 Movie ke liye likhein: /movie Jawan",
+            "help_anime": "⛩️ Anime ke liye likhein: /anime Naruto",
+            "help_series": "📺 Series ke liye likhein: /webseries Mirzapur",
+            "help_req": "📩 Request ke liye: /request MovieName"
+        }
+        if call.data in help_msgs:
+            bot.answer_callback_query(call.id, help_msgs[call.data], show_alert=True)
+            return
+
+        # Request management buttons (admin only)
+        if call.data.startswith("req_"):
+            if call.from_user.id != ADMIN_ID:
+                bot.answer_callback_query(call.id, "🚫 Sirf admin ke liye", show_alert=True)
+                return
+
+            parts = call.data.split("_")
+            action = parts[1]  # done / rej
+            req_id = int(parts[2])
+
+            target = next((r for r in requests_db if r['id'] == req_id), None)
+            if not target:
+                bot.answer_callback_query(call.id, "❌ Request not found", show_alert=True)
+                return
+
+            if action == "done":
+                target['status'] = 'done'
+                save_reqs(requests_db)
+                bot.answer_callback_query(call.id, "✅ Marked as added")
+                # User ko notify karo
+                try:
+                    bot.send_message(
+                        target['user_id'],
+                        f"🎉 Aapki request *{target['movie']}* add ho gayi hai!\n"
+                        f"Ab `/movie {target['movie']}` se search karein.",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    print(f"User notify failed: {e}")
+                # Update message
+                try:
+                    bot.edit_message_text(
+                        f"✅ *DONE:* {target['movie']}",
+                        call.message.chat.id, call.message.message_id,
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+
+            elif action == "rej":
+                target['status'] = 'rejected'
+                save_reqs(requests_db)
+                bot.answer_callback_query(call.id, "❌ Rejected")
+                try:
+                    bot.send_message(
+                        target['user_id'],
+                        f"😔 Aapki request *{target['movie']}* abhi available nahi hai.",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    print(f"User notify failed: {e}")
+                try:
+                    bot.edit_message_text(
+                        f"❌ *REJECTED:* {target['movie']}",
+                        call.message.chat.id, call.message.message_id,
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+            return
+
+        bot.answer_callback_query(call.id, "?")
     except Exception as e:
         print(f"Callback error: {e}")
 
