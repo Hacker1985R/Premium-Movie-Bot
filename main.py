@@ -47,8 +47,9 @@ def admin_panel(message):
     if message.from_user.id == ADMIN_ID:
         text = (
             "🛠 *ADMIN CONTROL PANEL*\n\n"
-            "➕ *Add:* `/add cat | name | link | photo` \n"
-            "🗑 *Del:* `/del cat | name`"
+            "➕ *Add (text only):*\n`/add movie | name | link`\n\n"
+            "🖼 *Add with poster:*\nPhoto bhejein, uske *caption* me likhein:\n`/add movie | name | link`\n\n"
+            "🗑 *Delete:* `/del movie | name`"
         )
         bot.reply_to(message, text, parse_mode="Markdown")
     else:
@@ -73,7 +74,8 @@ def search(message):
 
     if found_key:
         data = db[cmd][found_key]
-        raw_link = data['link'].replace('\\n', '\n')
+        raw_link = data.get('link', '').replace('\\n', '\n')
+        photo = data.get('photo', '')
 
         # Har URL aur uske aas-paas ka quality label nikaalo
         url_pattern = re.compile(r'(https?://\S+)')
@@ -112,20 +114,23 @@ def search(message):
             caption += raw_link
 
         rm = markup if url_matches else None
-        try:
-            bot.send_photo(
-                message.chat.id,
-                data['photo'],
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=rm
-            )
-        except Exception as e:
-            # Photo URL invalid ya reachable nahi — text fallback
-            print(f"send_photo failed: {e}")
+        sent = False
+        if photo:
+            try:
+                bot.send_photo(
+                    message.chat.id,
+                    photo,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=rm
+                )
+                sent = True
+            except Exception as e:
+                print(f"send_photo failed: {e}")
+        if not sent:
             bot.send_message(
                 message.chat.id,
-                caption + "\n\n⚠️ _Poster load nahi ho paaya._",
+                caption,
                 parse_mode="Markdown",
                 reply_markup=rm
             )
@@ -145,17 +150,47 @@ def search(message):
         bot.reply_to(message, msg, parse_mode="Markdown")
 
 # --- Add Content ---
+def _process_add(message, raw_text, photo_id=None):
+    try:
+        p = raw_text.replace('/add', '', 1).strip().split('|')
+        cat = p[0].strip().lower()
+        name = p[1].strip().lower()
+        link = p[2].strip() if len(p) > 2 else ''
+        photo = photo_id or (p[3].strip() if len(p) > 3 else '')
+
+        if cat not in db:
+            db[cat] = {}
+
+        db[cat][name] = {"link": link, "photo": photo}
+        save_db(db)
+        photo_note = "📸 Photo attached" if photo else "📭 Without photo"
+        bot.reply_to(
+            message,
+            f"⭐ *Successfully Added:* {name.upper()}\n{photo_note}",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        bot.reply_to(
+            message,
+            "❌ *Format:*\n"
+            "`/add movie | Jawan | link`\n"
+            "_(photo bhejna ho to photo ke caption me yahi command likhein)_",
+            parse_mode="Markdown"
+        )
+
 @bot.message_handler(commands=['add'])
 def add_content(message):
     if message.from_user.id == ADMIN_ID:
-        try:
-            p = message.text.replace('/add ', '').split('|')
-            cat, name, link, photo = p[0].strip().lower(), p[1].strip().lower(), p[2].strip(), p[3].strip()
-            db[cat][name] = {"link": link, "photo": photo}
-            save_db(db)
-            bot.reply_to(message, f"⭐ *Successfully Added:* {name.upper()}", parse_mode="Markdown")
-        except:
-            bot.reply_to(message, "❌ Format: `/add movie | Jawan | link | photo`", parse_mode="Markdown")
+        _process_add(message, message.text)
+
+# Photo ke saath caption me /add aaye to photo ko poster bana lo
+@bot.message_handler(content_types=['photo'],
+                     func=lambda m: (m.caption or '').strip().lower().startswith('/add'))
+def add_with_photo(message):
+    if message.from_user.id == ADMIN_ID:
+        # Sabse bade size ka photo file_id lo
+        photo_id = message.photo[-1].file_id
+        _process_add(message, message.caption, photo_id=photo_id)
 
 # --- Delete Content (Admin Only) ---
 @bot.message_handler(commands=['del'])
