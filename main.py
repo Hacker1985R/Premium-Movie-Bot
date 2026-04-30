@@ -94,7 +94,8 @@ def search(message):
             return defaults[idx] if idx < len(defaults) else f"Link {idx+1}"
 
         markup = types.InlineKeyboardMarkup()
-        caption = f"🌟 *{found_key.upper()}*\n\n"
+        display = data.get('display_name') or found_key.upper()
+        caption = f"🌟 *{display}*\n\n"
 
         if len(url_matches) == 1:
             markup.add(types.InlineKeyboardButton(
@@ -152,29 +153,58 @@ def search(message):
 # --- Add Content ---
 def _process_add(message, raw_text, photo_id=None):
     try:
-        p = raw_text.replace('/add', '', 1).strip().split('|')
-        cat = p[0].strip().lower()
-        name = p[1].strip().lower()
-        link = p[2].strip() if len(p) > 2 else ''
-        photo = photo_id or (p[3].strip() if len(p) > 3 else '')
+        body = raw_text.replace('/add', '', 1).strip()
+
+        # Pehla separator: category aur baki ke beech (sirf '|')
+        first = body.find('|')
+        if first == -1:
+            raise ValueError("Need at least: /add cat | name")
+        cat = body[:first].strip().lower()
+        rest = body[first + 1:].strip()
+
+        # Doosra separator: name aur links ke beech — '|' ya newline, jo pehle aaye
+        nl = rest.find('\n')
+        pipe = rest.find('|')
+        candidates = [x for x in [nl, pipe] if x != -1]
+        if candidates:
+            sep = min(candidates)
+            name_raw = rest[:sep].strip()
+            link_block = rest[sep + 1:].strip()
+        else:
+            name_raw = rest.strip()
+            link_block = ''
+
+        if not name_raw:
+            raise ValueError("Name required")
+
+        name_key = name_raw.lower()
 
         if cat not in db:
             db[cat] = {}
 
-        db[cat][name] = {"link": link, "photo": photo}
+        db[cat][name_key] = {
+            "display_name": name_raw,   # Original case preserved
+            "link": link_block,          # URLs ka case as-is
+            "photo": photo_id or ''
+        }
         save_db(db)
-        photo_note = "📸 Photo attached" if photo else "📭 Without photo"
+
+        photo_note = "📸 Photo attached" if photo_id else "📭 No photo"
         bot.reply_to(
             message,
-            f"⭐ *Successfully Added:* {name.upper()}\n{photo_note}",
+            f"⭐ *Successfully Added:* {name_raw}\n{photo_note}",
             parse_mode="Markdown"
         )
     except Exception:
         bot.reply_to(
             message,
             "❌ *Format:*\n"
-            "`/add movie | Jawan | link`\n"
-            "_(photo bhejna ho to photo ke caption me yahi command likhein)_",
+            "`/add movie | Movie Name | links...`\n\n"
+            "*Ya phir:*\n"
+            "`/add movie | Movie Name`\n"
+            "`📥 480p :- https://...`\n"
+            "`📥 720p :- https://...`\n\n"
+            "_Photo attach karne ke liye photo bhejein aur uske caption me yahi command likhein._",
             parse_mode="Markdown"
         )
 
