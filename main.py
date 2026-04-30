@@ -111,13 +111,24 @@ def search(message):
         else:
             caption += raw_link
 
-        bot.send_photo(
-            message.chat.id,
-            data['photo'],
-            caption=caption,
-            parse_mode="Markdown",
-            reply_markup=markup if url_matches else None
-        )
+        rm = markup if url_matches else None
+        try:
+            bot.send_photo(
+                message.chat.id,
+                data['photo'],
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=rm
+            )
+        except Exception as e:
+            # Photo URL invalid ya reachable nahi — text fallback
+            print(f"send_photo failed: {e}")
+            bot.send_message(
+                message.chat.id,
+                caption + "\n\n⚠️ _Poster load nahi ho paaya._",
+                parse_mode="Markdown",
+                reply_markup=rm
+            )
     else:
         # Suggestions Logic — partial + fuzzy
         partial = [n for n in all_names if query in n or n in query]
