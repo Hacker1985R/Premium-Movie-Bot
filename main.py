@@ -1,3 +1,4 @@
+from keep_alive import keep_alive
 import telebot
 from telebot import types
 import json
@@ -529,5 +530,6 @@ def callback(call):
     except Exception as e:
         print(f"Callback error: {e}")
 
+keep_alive()
 print("Premium Bot is running...")
 bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
