@@ -8,7 +8,7 @@ import threading
 import difflib # Matches dhundhne ke liye
 
 # --- Auto-Delete Settings ---
-AUTO_DELETE_SECONDS = 300  # 5 minutes
+AUTO_DELETE_SECONDS = 120  # 2 minutes
 
 # --- DETAILS (Secrets se load — code me visible nahi) ---
 API_TOKEN = os.environ.get("BOT_TOKEN", "")
