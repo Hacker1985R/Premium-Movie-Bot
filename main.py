@@ -595,6 +595,7 @@ def callback(call):
     except Exception as e:
         print(f"Callback error: {e}")
 
-keep_alive()
+if os.environ.get("KEEP_ALIVE", "false").lower() == "true":
+    keep_alive()
 print("Premium Bot is running...")
 bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
