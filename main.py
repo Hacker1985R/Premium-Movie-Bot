@@ -157,7 +157,6 @@ def search(message):
         elif len(url_matches) > 1:
             prev_end = 0
             for i, m in enumerate(url_matches):
-                # Text just before this URL (since previous URL ended)
                 text_before = raw_link[prev_end:m.start()]
                 label = detect_label(text_before, i, len(url_matches))
                 markup.add(types.InlineKeyboardButton(
@@ -167,11 +166,19 @@ def search(message):
         else:
             caption += raw_link
 
-        # Auto-delete warning
-        mins = AUTO_DELETE_SECONDS // 60
-        caption += f"\n\n⏳ _Ye message {mins} minute me auto-delete ho jayega. Link save kar lein!_"
+        # Admin ke liye remove button
+        if message.from_user.id == ADMIN_ID:
+            import urllib.parse
+            safe_key = urllib.parse.quote(f"{cmd}|{found_key}", safe='')
+            markup.add(types.InlineKeyboardButton(
+                "🗑 Remove Movie", callback_data=f"remove_{safe_key}"))
 
-        rm = markup if url_matches else None
+        # Auto-delete warning (sirf non-admin ke liye)
+        if message.from_user.id != ADMIN_ID:
+            mins = AUTO_DELETE_SECONDS // 60
+            caption += f"\n\n⏳ _Ye message {mins} minute me auto-delete ho jayega. Link save kar lein!_"
+
+        rm = markup
         sent_msg = None
         if photo:
             try:
@@ -192,8 +199,8 @@ def search(message):
                 reply_markup=rm
             )
 
-        # 5 minute baad delete
-        if sent_msg:
+        # Auto-delete sirf non-admin ke liye
+        if sent_msg and message.from_user.id != ADMIN_ID:
             schedule_delete(sent_msg.chat.id, sent_msg.message_id)
     else:
         # Suggestions — sirf meaningful matches dikhao
@@ -546,6 +553,42 @@ def callback(call):
                     )
                 except Exception:
                     pass
+            return
+
+        # Remove movie button (admin only)
+        if call.data.startswith("remove_"):
+            if call.from_user.id != ADMIN_ID:
+                bot.answer_callback_query(call.id, "🚫 Sirf admin ke liye!", show_alert=True)
+                return
+            import urllib.parse
+            raw = urllib.parse.unquote(call.data.replace("remove_", "", 1))
+            parts = raw.split("|", 1)
+            if len(parts) == 2:
+                cat, name = parts[0], parts[1]
+                if cat in db and name in db[cat]:
+                    display = db[cat][name].get('display_name') or name
+                    del db[cat][name]
+                    save_db(db)
+                    bot.answer_callback_query(call.id, f"🗑 '{display}' delete ho gayi!", show_alert=True)
+                    try:
+                        bot.edit_message_caption(
+                            caption=f"🗑 *{display}* — Delete ho gayi!",
+                            chat_id=call.message.chat.id,
+                            message_id=call.message.message_id,
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        try:
+                            bot.edit_message_text(
+                                f"🗑 *{display}* — Delete ho gayi!",
+                                call.message.chat.id,
+                                call.message.message_id,
+                                parse_mode="Markdown"
+                            )
+                        except Exception:
+                            pass
+                else:
+                    bot.answer_callback_query(call.id, "❌ Movie already delete ho chuki hai.", show_alert=True)
             return
 
         bot.answer_callback_query(call.id, "?")
