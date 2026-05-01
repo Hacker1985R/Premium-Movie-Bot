@@ -98,14 +98,30 @@ def search(message):
     cmd = message.text.split()[0][1:].lower()
     query = message.text.replace(f'/{cmd} ', '').strip().lower()
 
+    # Minimum 2 characters required
+    if len(query) < 2:
+        bot.reply_to(
+            message,
+            "✏️ Kam se kam *2 letters* likho search karne ke liye.\n"
+            "Example: `/movie kd` ya `/movie pushpa`",
+            parse_mode="Markdown"
+        )
+        return
+
     all_names = list(db[cmd].keys())
     found_key = None
 
     if query in db[cmd]:
         found_key = query
     else:
-        # Partial match: agar query kisi name ka hissa hai
-        partial = [n for n in all_names if query in n or n in query]
+        # Partial match: sirf tab match karo jab query kam se kam 2 chars ho
+        # aur movie name me query ka 2+ char ka hissa mile
+        partial = [
+            n for n in all_names
+            if len(query) >= 2 and (query in n or n.startswith(query[:2]))
+            and query[:2] in n  # kam se kam pehle 2 letters match hone chahiye
+        ]
+        # Sirf tab auto-select karo jab exact 1 match ho
         if len(partial) == 1:
             found_key = partial[0]
 
@@ -180,18 +196,24 @@ def search(message):
         if sent_msg:
             schedule_delete(sent_msg.chat.id, sent_msg.message_id)
     else:
-        # Suggestions Logic — partial + fuzzy
-        partial = [n for n in all_names if query in n or n in query]
-        fuzzy = difflib.get_close_matches(query, all_names, n=3, cutoff=0.3)
+        # Suggestions — sirf meaningful matches dikhao
+        partial = [
+            n for n in all_names
+            if len(query) >= 2 and query[:2] in n and query in n
+        ]
+        fuzzy = difflib.get_close_matches(query, all_names, n=5, cutoff=0.4)
         matches = list(dict.fromkeys(partial + fuzzy))[:5]
 
         msg = f"🔍 *'{query}'* nahi mili."
         if matches:
             msg += "\n\n💡 *Shayad aap ye dhundh rahe hain:*\n"
             for m in matches:
-                msg += f"• `/{cmd} {m}`\n"
+                display = db[cmd][m].get('display_name') or m
+                msg += f"• `/{cmd} {m}` — _{display}_\n"
+        else:
+            msg += "\n\n❌ Koi milti-julti movie nahi mili."
 
-        msg += f"\n📩 Request karne ke liye: `/request {query}`"
+        msg += f"\n\n📩 Request karne ke liye: `/request {query}`"
         bot.reply_to(message, msg, parse_mode="Markdown")
 
 # --- Add Content ---
