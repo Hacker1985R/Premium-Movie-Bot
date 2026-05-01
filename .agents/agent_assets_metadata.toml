@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Wgy_801gf5wNdS_6VbjVA"
+uri = "file://movie-bot.zip"
+type = "unspecified"
+title = "Movie Bot — Saari Files"
