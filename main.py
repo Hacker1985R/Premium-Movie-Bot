@@ -61,10 +61,15 @@ def schedule_delete(chat_id, message_id, delay=AUTO_DELETE_SECONDS):
 # --- Welcome Interface ---
 @bot.message_handler(commands=['start'])
 def start(message):
+    db = load_db()
+    movie_count = len(db.get("movie", {}))
+    anime_count = len(db.get("anime", {}))
+    series_count = len(db.get("webseries", {}))
+
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btn1 = types.InlineKeyboardButton("🎬 Movies", callback_data="help_movie")
-    btn2 = types.InlineKeyboardButton("⛩️ Anime", callback_data="help_anime")
-    btn3 = types.InlineKeyboardButton("📺 Series", callback_data="help_series")
+    btn1 = types.InlineKeyboardButton(f"🎬 Movies ({movie_count})", callback_data="help_movie")
+    btn2 = types.InlineKeyboardButton(f"⛩️ Anime ({anime_count})", callback_data="help_anime")
+    btn3 = types.InlineKeyboardButton(f"📺 Series ({series_count})", callback_data="help_series")
     btn4 = types.InlineKeyboardButton("📩 Request", callback_data="help_req")
     markup.add(btn1, btn2, btn3, btn4)
     
