@@ -73,16 +73,11 @@ def start(message):
     btn4 = types.InlineKeyboardButton("📩 Request", callback_data="help_req")
     markup.add(btn1, btn2, btn3, btn4)
     
-    total = movie_count + anime_count + series_count
     welcome_text = (
         f"╔══════════════════════╗\n"
         f"  🎬 *PREMIUM MOVIE RADAR* 🎬\n"
         f"╚══════════════════════╝\n\n"
         f"👋 Welcome, *{message.from_user.first_name}*!\n\n"
-        f"🗄 *Database:* `{total}` titles available\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔍 *Search karo ya category chunein:*\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"💡 _Tip: /movie Pushpa — seedha search bhi kar sakte ho!_"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
