@@ -67,7 +67,7 @@ def start(message):
     series_count = len(db.get("webseries", {}))
 
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btn1 = types.InlineKeyboardButton(f"🎬 Movies ({movie_count})", callback_data="help_movie")
+    btn1 = types.InlineKeyboardButton(f"🎬 Movies ({movie_count})", callback_data="browse_movie")
     btn2 = types.InlineKeyboardButton(f"⛩️ Anime ({anime_count})", callback_data="browse_anime")
     btn3 = types.InlineKeyboardButton(f"📺 Series ({series_count})", callback_data="browse_series")
     btn4 = types.InlineKeyboardButton("📩 Request", callback_data="help_req")
@@ -81,6 +81,34 @@ def start(message):
         f"💡 _Tip: /movie Pushpa — seedha search bhi kar sakte ho!_"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
+
+# --- Browse Latest 5 Movies ---
+def show_movie_list(call):
+    db = load_db()
+    items = db.get("movie", {})
+    if not items:
+        bot.answer_callback_query(call.id, "❌ Abhi koi movie nahi hai!", show_alert=True)
+        return
+    # Latest 5 movies (last added)
+    latest = list(items.items())[-5:]
+    latest.reverse()
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for key, data in latest:
+        display = data.get('display_name') or key.upper()
+        short_key = key[:40]
+        markup.add(types.InlineKeyboardButton(f"🎬 {display}", callback_data=f"tm_{short_key}"))
+    markup.add(types.InlineKeyboardButton("🔍 Search Movie", callback_data="help_movie"))
+    markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="go_start"))
+    bot.edit_message_text(
+        f"╔══════════════════════╗\n"
+        f"  🎬 *LATEST MOVIES*\n"
+        f"╚══════════════════════╝\n\n"
+        f"🆕 *Latest {len(latest)} Movies:*\n"
+        f"_Movie select karo ya search karo:_",
+        call.message.chat.id, call.message.message_id,
+        parse_mode="Markdown", reply_markup=markup
+    )
+    bot.answer_callback_query(call.id)
 
 # --- Browse Anime/Series Title List ---
 def show_title_list(call, cat, emoji):
@@ -782,6 +810,63 @@ def callback(call):
         }
         if call.data in help_msgs:
             bot.answer_callback_query(call.id, help_msgs[call.data], show_alert=True)
+            return
+
+        # Browse Movie list
+        if call.data == "browse_movie":
+            show_movie_list(call)
+            return
+
+        # Movie title selected from list
+        if call.data.startswith("tm_"):
+            key = call.data[3:]
+            db = load_db()
+            items = db.get("movie", {})
+            matched_key = key if key in items else next((k for k in items if k[:40] == key), None)
+            if not matched_key:
+                bot.answer_callback_query(call.id, "❌ Movie nahi mili!", show_alert=True)
+                return
+            data = items[matched_key]
+            display = data.get('display_name') or matched_key.upper()
+            raw_link = data.get('link', '').replace('\\n', '\n')
+            photo = data.get('photo', '')
+            url_pattern = re.compile(r'(https?://\S+)')
+            url_matches = list(url_pattern.finditer(raw_link))
+            markup = types.InlineKeyboardMarkup()
+            caption = (
+                f"┌──────────────────────\n"
+                f"  🎬 *{display}*\n"
+                f"└──────────────────────\n\n"
+            )
+            if len(url_matches) == 1:
+                markup.add(types.InlineKeyboardButton("🚀 Watch / Download", url=url_matches[0].group(1)))
+                caption += "✅ *Ready to Watch!*\n📥 Button dabao aur enjoy karo!"
+            elif len(url_matches) > 1:
+                defaults = ["480p", "720p", "1080p", "4K", "HD"]
+                prev_end = 0
+                for i, m in enumerate(url_matches):
+                    label = defaults[i] if i < len(defaults) else f"Link {i+1}"
+                    markup.add(types.InlineKeyboardButton(f"📥 {label}", url=m.group(1)))
+                    prev_end = m.end()
+                caption += "✅ *Multiple Qualities!*\n🎯 Quality select karo:"
+            else:
+                caption += raw_link
+            markup.add(types.InlineKeyboardButton("🔙 Movies List", callback_data="browse_movie"))
+            if call.from_user.id != ADMIN_ID:
+                caption += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n⏳ _2 min me delete hoga!_"
+            bot.answer_callback_query(call.id)
+            sent = None
+            if photo:
+                try:
+                    sent = bot.send_photo(call.message.chat.id, photo, caption=caption,
+                                         parse_mode="Markdown", reply_markup=markup)
+                except Exception:
+                    pass
+            if not sent:
+                sent = bot.send_message(call.message.chat.id, caption,
+                                       parse_mode="Markdown", reply_markup=markup)
+            if call.from_user.id != ADMIN_ID:
+                schedule_delete(sent.chat.id, sent.message_id)
             return
 
         # Browse Anime list
