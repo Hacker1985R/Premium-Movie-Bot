@@ -68,8 +68,8 @@ def start(message):
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn1 = types.InlineKeyboardButton(f"🎬 Movies ({movie_count})", callback_data="help_movie")
-    btn2 = types.InlineKeyboardButton(f"⛩️ Anime ({anime_count})", callback_data="help_anime")
-    btn3 = types.InlineKeyboardButton(f"📺 Series ({series_count})", callback_data="help_series")
+    btn2 = types.InlineKeyboardButton(f"⛩️ Anime ({anime_count})", callback_data="browse_anime")
+    btn3 = types.InlineKeyboardButton(f"📺 Series ({series_count})", callback_data="browse_series")
     btn4 = types.InlineKeyboardButton("📩 Request", callback_data="help_req")
     markup.add(btn1, btn2, btn3, btn4)
     
@@ -82,17 +82,154 @@ def start(message):
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
+# --- Browse Anime/Series Title List ---
+def show_title_list(call, cat, emoji):
+    db = load_db()
+    items = db.get(cat, {})
+    if not items:
+        bot.answer_callback_query(call.id, f"❌ Abhi koi {cat} nahi hai!", show_alert=True)
+        return
+    prefix = "ta" if cat == "anime" else "ts"
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btns = []
+    for key, data in items.items():
+        display = data.get('display_name') or key.upper()
+        short_key = key[:40]
+        btns.append(types.InlineKeyboardButton(f"{emoji} {display}", callback_data=f"{prefix}_{short_key}"))
+    markup.add(*btns)
+    markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="go_start"))
+    cat_name = "ANIME" if cat == "anime" else "WEB SERIES"
+    bot.edit_message_text(
+        f"╔══════════════════════╗\n"
+        f"  {emoji} *{cat_name} LIST*\n"
+        f"╚══════════════════════╝\n\n"
+        f"📋 *{len(items)} titles available*\n"
+        f"_Kaunsa dekhna hai? Select karo:_",
+        call.message.chat.id, call.message.message_id,
+        parse_mode="Markdown", reply_markup=markup
+    )
+    bot.answer_callback_query(call.id)
+
+# --- Show Episodes of a Title ---
+def show_episodes(call, cat, key):
+    db = load_db()
+    items = db.get(cat, {})
+    # Find matching key
+    matched_key = key if key in items else next((k for k in items if k[:40] == key), None)
+    if not matched_key:
+        bot.answer_callback_query(call.id, "❌ Title nahi mili!", show_alert=True)
+        return
+    data = items[matched_key]
+    display = data.get('display_name') or matched_key.upper()
+    episodes = data.get('episodes', {})
+    photo = data.get('photo', '')
+    back_cb = "browse_anime" if cat == "anime" else "browse_series"
+    ep_prefix = "ea" if cat == "anime" else "es"
+
+    # Agar episodes nahi, seedha link dikhao
+    if not episodes:
+        raw_link = data.get('link', '')
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id,
+            f"┌──────────────────────\n"
+            f"  🎬 *{display}*\n"
+            f"└──────────────────────\n\n"
+            f"🔗 {raw_link}",
+            parse_mode="Markdown"
+        )
+        return
+
+    markup = types.InlineKeyboardMarkup(row_width=4)
+    ep_nums = sorted(episodes.keys(), key=lambda x: int(x) if x.isdigit() else 0)
+    btns = []
+    for ep in ep_nums:
+        short_key = matched_key[:35]
+        btns.append(types.InlineKeyboardButton(
+            f"Ep {ep}", callback_data=f"{ep_prefix}_{short_key}_{ep}"))
+    markup.add(*btns)
+    markup.add(types.InlineKeyboardButton("🔙 Back", callback_data=back_cb))
+
+    caption = (
+        f"┌──────────────────────\n"
+        f"  📺 *{display}*\n"
+        f"└──────────────────────\n\n"
+        f"🎯 *{len(episodes)} Episodes Available*\n"
+        f"_Episode select karo:_"
+    )
+    try:
+        if photo:
+            bot.answer_callback_query(call.id)
+            bot.send_photo(call.message.chat.id, photo, caption=caption,
+                          parse_mode="Markdown", reply_markup=markup)
+        else:
+            bot.edit_message_text(caption, call.message.chat.id,
+                                  call.message.message_id,
+                                  parse_mode="Markdown", reply_markup=markup)
+            bot.answer_callback_query(call.id)
+    except Exception:
+        bot.send_message(call.message.chat.id, caption,
+                        parse_mode="Markdown", reply_markup=markup)
+        bot.answer_callback_query(call.id)
+
+# --- Show Single Episode Link ---
+def show_episode_link(call, cat, key, ep_num):
+    db = load_db()
+    items = db.get(cat, {})
+    matched_key = key if key in items else next((k for k in items if k[:35] == key), None)
+    if not matched_key:
+        bot.answer_callback_query(call.id, "❌ Title nahi mili!", show_alert=True)
+        return
+    data = items[matched_key]
+    display = data.get('display_name') or matched_key.upper()
+    episodes = data.get('episodes', {})
+    ep_prefix = "ea" if cat == "anime" else "es"
+    back_key = matched_key[:40] if cat == "anime" else matched_key[:40]
+    back_cb = f"ta_{back_key}" if cat == "anime" else f"ts_{back_key}"
+
+    if ep_num not in episodes:
+        bot.answer_callback_query(call.id, "❌ Episode nahi mila!", show_alert=True)
+        return
+
+    link = episodes[ep_num]
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🚀 Watch / Download", url=link))
+    markup.add(types.InlineKeyboardButton("🔙 Episodes List", callback_data=back_cb))
+
+    msg = bot.send_message(
+        call.message.chat.id,
+        f"┌──────────────────────\n"
+        f"  📺 *{display}*\n"
+        f"  🎬 Episode *{ep_num}*\n"
+        f"└──────────────────────\n\n"
+        f"✅ *Ready to Watch!*\n"
+        f"_Niche button dabao:_\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏳ _2 min me auto-delete hoga!_",
+        parse_mode="Markdown", reply_markup=markup
+    )
+    bot.answer_callback_query(call.id)
+    if call.from_user.id != ADMIN_ID:
+        schedule_delete(msg.chat.id, msg.message_id)
+
 # --- Admin Panel (Sirf Aapke Liye) ---
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if message.from_user.id == ADMIN_ID:
         text = (
             "🛠 *ADMIN CONTROL PANEL*\n\n"
-            "➕ *Add (text only):*\n`/add movie | name | link`\n\n"
-            "🖼 *Add with poster:*\nPhoto bhejein, uske *caption* me likhein:\n`/add movie | name | link`\n\n"
-            "🗑 *Delete:* `/del movie | name`\n\n"
-            "📩 *Requests dekho:* `/requests`\n"
-            "🧹 *Clear done/rejected:* `/clearreq`"
+            "━━ 🎬 MOVIES ━━\n"
+            "➕ `/add movie | Name | link`\n"
+            "🗑 `/del movie | Name`\n\n"
+            "━━ ⛩️ ANIME / 📺 SERIES ━━\n"
+            "➕ Series banao:\n`/add anime | Series Name`\n\n"
+            "➕ Episode add karo:\n`/addepisode anime | Name | 1 | link`\n"
+            "`/addepisode webseries | Name | 1 | link`\n\n"
+            "🗑 Series delete:\n`/del anime | Name`\n\n"
+            "━━ 📩 REQUESTS ━━\n"
+            "📋 `/requests`\n"
+            "🧹 `/clearreq`\n\n"
+            "━━ 💾 BACKUP ━━\n"
+            "📦 `/backup`"
         )
         bot.reply_to(message, text, parse_mode="Markdown")
     else:
@@ -334,6 +471,52 @@ def delete_content(message):
                 bot.reply_to(message, "❌ Not found.")
         except:
             bot.reply_to(message, "❌ Use: `/del movie | name`")
+
+# --- Add Episode (Admin Only) ---
+@bot.message_handler(commands=['addepisode'])
+def add_episode(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        body = message.text.replace('/addepisode', '', 1).strip()
+        parts = [p.strip() for p in body.split('|')]
+        if len(parts) < 4:
+            raise ValueError("Format galat")
+        cat = parts[0].lower()
+        name_raw = parts[1]
+        ep_num = parts[2]
+        link = parts[3]
+        name_key = name_raw.lower()
+
+        db = load_db()
+        if cat not in db:
+            db[cat] = {}
+        if name_key not in db[cat]:
+            db[cat][name_key] = {"display_name": name_raw, "photo": "", "link": "", "episodes": {}}
+        if 'episodes' not in db[cat][name_key]:
+            db[cat][name_key]['episodes'] = {}
+
+        db[cat][name_key]['episodes'][ep_num] = link
+        save_db(db)
+
+        total_eps = len(db[cat][name_key]['episodes'])
+        bot.reply_to(message,
+            f"╔══════════════════════╗\n"
+            f"  ✅ Episode Added!\n"
+            f"╚══════════════════════╝\n\n"
+            f"📺 *{name_raw}*\n"
+            f"🎬 Episode: `{ep_num}`\n"
+            f"📊 Total Episodes: `{total_eps}`\n\n"
+            f"_Next: `/addepisode {cat} | {name_raw} | {int(ep_num)+1} | link`_",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        bot.reply_to(message,
+            "❌ *Sahi Format:*\n"
+            "`/addepisode anime | Naruto | 1 | https://link`\n"
+            "`/addepisode webseries | Mirzapur | 1 | https://link`",
+            parse_mode="Markdown"
+        )
 
 # --- Request ---
 @bot.message_handler(commands=['request'])
@@ -595,12 +778,71 @@ def callback(call):
         # Help buttons (welcome screen ke)
         help_msgs = {
             "help_movie": "🎬 MOVIES\n\nSearch karo:\n/movie Pushpa\n/movie Jawan\n/movie KGF",
-            "help_anime": "⛩️ ANIME\n\nSearch karo:\n/anime Naruto\n/anime Dragon Ball\n/anime AOT",
-            "help_series": "📺 WEB SERIES\n\nSearch karo:\n/webseries Mirzapur\n/webseries Money Heist",
             "help_req": "📩 REQUEST\n\nJo movie chahiye:\n/request Pushpa 2\n/request KGF 3\n\nAdmin jald add karega!"
         }
         if call.data in help_msgs:
             bot.answer_callback_query(call.id, help_msgs[call.data], show_alert=True)
+            return
+
+        # Browse Anime list
+        if call.data == "browse_anime":
+            show_title_list(call, "anime", "⛩️")
+            return
+
+        # Browse Series list
+        if call.data == "browse_series":
+            show_title_list(call, "webseries", "📺")
+            return
+
+        # Back to start
+        if call.data == "go_start":
+            db = load_db()
+            movie_count = len(db.get("movie", {}))
+            anime_count = len(db.get("anime", {}))
+            series_count = len(db.get("webseries", {}))
+            markup = types.InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                types.InlineKeyboardButton(f"🎬 Movies ({movie_count})", callback_data="help_movie"),
+                types.InlineKeyboardButton(f"⛩️ Anime ({anime_count})", callback_data="browse_anime"),
+                types.InlineKeyboardButton(f"📺 Series ({series_count})", callback_data="browse_series"),
+                types.InlineKeyboardButton("📩 Request", callback_data="help_req")
+            )
+            bot.edit_message_text(
+                f"╔══════════════════════╗\n"
+                f"  🎬 *PREMIUM MOVIE RADAR* 🎬\n"
+                f"╚══════════════════════╝\n\n"
+                f"👋 *Main Menu*\n\n"
+                f"💡 _Category chunein ya /movie se search karo_",
+                call.message.chat.id, call.message.message_id,
+                parse_mode="Markdown", reply_markup=markup
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # Title selected (Anime)
+        if call.data.startswith("ta_"):
+            key = call.data[3:]
+            show_episodes(call, "anime", key)
+            return
+
+        # Title selected (Series)
+        if call.data.startswith("ts_"):
+            key = call.data[3:]
+            show_episodes(call, "webseries", key)
+            return
+
+        # Episode selected (Anime)
+        if call.data.startswith("ea_"):
+            parts = call.data[3:].rsplit("_", 1)
+            if len(parts) == 2:
+                show_episode_link(call, "anime", parts[0], parts[1])
+            return
+
+        # Episode selected (Series)
+        if call.data.startswith("es_"):
+            parts = call.data[3:].rsplit("_", 1)
+            if len(parts) == 2:
+                show_episode_link(call, "webseries", parts[0], parts[1])
             return
 
         # Request management buttons (admin only)
