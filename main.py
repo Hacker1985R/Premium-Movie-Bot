@@ -428,6 +428,81 @@ def list_requests(message):
             reply_markup=markup
         )
 
+# --- Admin: Backup Database ---
+@bot.message_handler(commands=['backup'])
+def backup(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        bot.send_message(ADMIN_ID,
+            "╔══════════════════════╗\n"
+            "  💾 Database Backup\n"
+            "╚══════════════════════╝\n\n"
+            "📦 Aapki poori database bhej raha hoon...",
+            parse_mode="Markdown"
+        )
+        with open(DB_FILE, 'rb') as f:
+            bot.send_document(ADMIN_ID, f, caption="🎬 *Movies/Anime/Series Database*\n_Ye file save kar lo — new bot me restore hogi!_", parse_mode="Markdown")
+        if os.path.exists(REQ_FILE):
+            with open(REQ_FILE, 'rb') as f:
+                bot.send_document(ADMIN_ID, f, caption="📩 *Requests Database*", parse_mode="Markdown")
+        bot.send_message(ADMIN_ID,
+            "✅ *Backup Complete!*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 _New bot me shift karne ke liye:_\n"
+            "1. Naya bot banao @BotFather se\n"
+            "2. `BOT_TOKEN` secret update karo\n"
+            "3. `/restore` se database wapas daalo\n"
+            "━━━━━━━━━━━━━━━━━━━━━━",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ Backup failed: {e}")
+
+# --- Admin: Restore Database ---
+@bot.message_handler(commands=['restore'], content_types=['text'])
+def restore_help(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    bot.reply_to(message,
+        "╔══════════════════════╗\n"
+        "  🔄 Restore Guide\n"
+        "╚══════════════════════╝\n\n"
+        "📤 *`database.json`* file mujhe bhejo\n"
+        "_(Backup se mili file directly bhejo)_\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✅ Main automatically restore kar lunga!",
+        parse_mode="Markdown"
+    )
+
+@bot.message_handler(content_types=['document'])
+def restore_db(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    fname = message.document.file_name
+    if fname == 'database.json':
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        with open(DB_FILE, 'wb') as f:
+            f.write(downloaded)
+        global db
+        db = load_db()
+        bot.reply_to(message,
+            "✅ *Database Restore Ho Gayi!*\n\n"
+            f"🎬 Movies: `{len(db.get('movie', {}))}`\n"
+            f"⛩️ Anime: `{len(db.get('anime', {}))}`\n"
+            f"📺 Series: `{len(db.get('webseries', {}))}`",
+            parse_mode="Markdown"
+        )
+    elif fname == 'requests.json':
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        with open(REQ_FILE, 'wb') as f:
+            f.write(downloaded)
+        global requests_db
+        requests_db = load_reqs()
+        bot.reply_to(message, "✅ *Requests Restore Ho Gayi!*", parse_mode="Markdown")
+
 # --- Admin: Clear old/done requests ---
 @bot.message_handler(commands=['clearreq'])
 def clear_requests(message):
