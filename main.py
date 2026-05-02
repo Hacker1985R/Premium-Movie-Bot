@@ -73,11 +73,17 @@ def start(message):
     btn4 = types.InlineKeyboardButton("📩 Request", callback_data="help_req")
     markup.add(btn1, btn2, btn3, btn4)
     
+    total = movie_count + anime_count + series_count
     welcome_text = (
-        f"✨ *Premium Movie Radar*\n\n"
-        f"Hello *{message.from_user.first_name}*,\n"
-        "Main aapka personal entertainment assistant hoon. "
-        "Niche diye gaye buttons ka use karein ya seedha search karein!"
+        f"╔══════════════════════╗\n"
+        f"  🎬 *PREMIUM MOVIE RADAR* 🎬\n"
+        f"╚══════════════════════╝\n\n"
+        f"👋 Welcome, *{message.from_user.first_name}*!\n\n"
+        f"🗄 *Database:* `{total}` titles available\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔍 *Search karo ya category chunein:*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💡 _Tip: /movie Pushpa — seedha search bhi kar sakte ho!_"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
@@ -153,12 +159,16 @@ def search(message):
 
         markup = types.InlineKeyboardMarkup()
         display = data.get('display_name') or found_key.upper()
-        caption = f"🌟 *{display}*\n\n"
+        caption = (
+            f"┌──────────────────────\n"
+            f"  🎬 *{display}*\n"
+            f"└──────────────────────\n\n"
+        )
 
         if len(url_matches) == 1:
             markup.add(types.InlineKeyboardButton(
                 "🚀 Download / Watch Online", url=url_matches[0].group(1)))
-            caption += "✅ Content ready! Niche button par click karein."
+            caption += "✅ *Ready to Watch!*\n📥 Niche button dabao aur enjoy karo!"
         elif len(url_matches) > 1:
             prev_end = 0
             for i, m in enumerate(url_matches):
@@ -167,7 +177,7 @@ def search(message):
                 markup.add(types.InlineKeyboardButton(
                     f"📥 {label}", url=m.group(1)))
                 prev_end = m.end()
-            caption += "✅ Content ready! Quality select karein:"
+            caption += "✅ *Multiple Qualities Available!*\n🎯 Apni pasand ki quality select karo:"
         else:
             caption += raw_link
 
@@ -181,7 +191,7 @@ def search(message):
         # Auto-delete warning (sirf non-admin ke liye)
         if message.from_user.id != ADMIN_ID:
             mins = AUTO_DELETE_SECONDS // 60
-            caption += f"\n\n⏳ _Ye message {mins} minute me auto-delete ho jayega. Link save kar lein!_"
+            caption += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n⏳ _Ye message {mins} min me delete hoga — link save kar lo!_"
 
         rm = markup
         sent_msg = None
@@ -216,16 +226,23 @@ def search(message):
         fuzzy = difflib.get_close_matches(query, all_names, n=5, cutoff=0.4)
         matches = list(dict.fromkeys(partial + fuzzy))[:5]
 
-        msg = f"🔍 *'{query}'* nahi mili."
+        msg = (
+            f"╔══════════════════════╗\n"
+            f"  🔍 Search Result\n"
+            f"╚══════════════════════╝\n\n"
+            f"😔 *'{query}'* nahi mili database mein.\n\n"
+        )
         if matches:
-            msg += "\n\n💡 *Shayad aap ye dhundh rahe hain:*\n"
+            msg += "💡 *Shayad aap ye dhundh rahe hain:*\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
             for m in matches:
                 display = db[cmd][m].get('display_name') or m
-                msg += f"• `/{cmd} {m}` — _{display}_\n"
+                msg += f"▸ `/{cmd} {m}` — _{display}_\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
         else:
-            msg += "\n\n❌ Koi milti-julti movie nahi mili."
+            msg += "❌ _Koi milti-julti title nahi mili._\n\n"
 
-        msg += f"\n\n📩 Request karne ke liye: `/request {query}`"
+        msg += f"\n📩 *Request karo:* `/request {query}`\n_Admin jald se jald add karega!_"
         bot.reply_to(message, msg, parse_mode="Markdown")
 
 # --- Add Content ---
@@ -267,10 +284,17 @@ def _process_add(message, raw_text, photo_id=None):
         }
         save_db(db)
 
-        photo_note = "📸 Photo attached" if photo_id else "📭 No photo"
+        photo_note = "📸 _Poster attached_" if photo_id else "📭 _No poster_"
         bot.reply_to(
             message,
-            f"⭐ *Successfully Added:* {name_raw}\n{photo_note}",
+            f"╔══════════════════════╗\n"
+            f"  ✅ Successfully Added!\n"
+            f"╚══════════════════════╝\n\n"
+            f"🎬 *{name_raw}*\n"
+            f"📂 Category: `{cat}`\n"
+            f"{photo_note}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"_Database update ho gaya!_",
             parse_mode="Markdown"
         )
     except Exception:
@@ -338,7 +362,14 @@ def req(message):
     requests_db.append(entry)
     save_reqs(requests_db)
 
-    bot.reply_to(message, "✅ Admin ko request bhej di gayi hai!\nJaise hi available hogi, aapko bata diya jayega.")
+    bot.reply_to(message, (
+        f"╔══════════════════════╗\n"
+        f"  📩 Request Submitted!\n"
+        f"╚══════════════════════╝\n\n"
+        f"✅ *'{r}'* ki request admin ko bhej di gayi!\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ _Jaise hi available hogi, aapko notify kar diya jayega!_"
+    ), parse_mode="Markdown")
 
     # Admin ko notification + quick action button
     markup = types.InlineKeyboardMarkup()
@@ -349,10 +380,13 @@ def req(message):
     uname = entry['username'] or entry['user_name']
     bot.send_message(
         ADMIN_ID,
-        f"📩 *New Request*\n\n"
-        f"🎬 *Movie:* {r}\n"
-        f"👤 *From:* {uname} (`{user.id}`)\n"
-        f"🕒 {entry['time']}",
+        f"╔══════════════════════╗\n"
+        f"  📩 NEW REQUEST ALERT!\n"
+        f"╚══════════════════════╝\n\n"
+        f"🎬 *Title:* {r}\n"
+        f"👤 *User:* {uname} (`{user.id}`)\n"
+        f"🕒 *Time:* {entry['time']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━",
         parse_mode="Markdown",
         reply_markup=markup
     )
@@ -490,10 +524,10 @@ def callback(call):
     try:
         # Help buttons (welcome screen ke)
         help_msgs = {
-            "help_movie": "🎬 Movie ke liye likhein: /movie Jawan",
-            "help_anime": "⛩️ Anime ke liye likhein: /anime Naruto",
-            "help_series": "📺 Series ke liye likhein: /webseries Mirzapur",
-            "help_req": "📩 Request ke liye: /request MovieName"
+            "help_movie": "🎬 MOVIES\n\nSearch karo:\n/movie Pushpa\n/movie Jawan\n/movie KGF",
+            "help_anime": "⛩️ ANIME\n\nSearch karo:\n/anime Naruto\n/anime Dragon Ball\n/anime AOT",
+            "help_series": "📺 WEB SERIES\n\nSearch karo:\n/webseries Mirzapur\n/webseries Money Heist",
+            "help_req": "📩 REQUEST\n\nJo movie chahiye:\n/request Pushpa 2\n/request KGF 3\n\nAdmin jald add karega!"
         }
         if call.data in help_msgs:
             bot.answer_callback_query(call.id, help_msgs[call.data], show_alert=True)
@@ -522,8 +556,12 @@ def callback(call):
                 try:
                     bot.send_message(
                         target['user_id'],
-                        f"🎉 Aapki request *{target['movie']}* add ho gayi hai!\n"
-                        f"Ab `/movie {target['movie']}` se search karein.",
+                        f"╔══════════════════════╗\n"
+                        f"  🎉 Request Complete!\n"
+                        f"╚══════════════════════╝\n\n"
+                        f"✅ *'{target['movie']}'* ab available hai!\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🔍 Ab search karo:\n`/movie {target['movie']}`",
                         parse_mode="Markdown"
                     )
                 except Exception as e:
@@ -545,7 +583,12 @@ def callback(call):
                 try:
                     bot.send_message(
                         target['user_id'],
-                        f"😔 Aapki request *{target['movie']}* abhi available nahi hai.",
+                        f"╔══════════════════════╗\n"
+                        f"  😔 Request Update\n"
+                        f"╚══════════════════════╝\n\n"
+                        f"❌ *'{target['movie']}'* abhi available nahi hai.\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"_Baad me dobara try karo ya koi aur title request karo._",
                         parse_mode="Markdown"
                     )
                 except Exception as e:
